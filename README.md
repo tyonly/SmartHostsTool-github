@@ -584,7 +584,3 @@ pyinstaller --onefile --windowed --icon=icon.ico --add-data "presets.json;." --a
 </p>
 
 ---
-
-## 🔮 后续开发计划
-
-你觉得这个新的 README 是否详细且清晰？是否需要我调整某些章节的内容或添加更多技术细节？
