@@ -48,6 +48,8 @@ from utils import get_logger
 class RemoteHostsClient:
     """获取远程 hosts 并解析出 GitHub 相关域名的 (ip, domain) 列表。"""
 
+    CACHE_TTL_SECONDS = 600
+
     def __init__(
         self,
         *,
@@ -55,10 +57,48 @@ class RemoteHostsClient:
         timeout: Tuple[int, int] = REMOTE_FETCH_TIMEOUT,
         app_name: str = APP_NAME,
         session: Optional[requests.Session] = None,
+        cache_dir: Optional[str] = None,
     ) -> None:
         self.urls = urls or list(REMOTE_HOSTS_URLS)
         self.timeout = timeout
         self.session = session or self._build_http_session(app_name)
+        self._cache_dir = cache_dir
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+
+    def _get_cache_path(self, url: str) -> Optional[str]:
+        if not self._cache_dir:
+            return None
+        import hashlib
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        return os.path.join(self._cache_dir, f"hosts_cache_{url_hash}.json")
+
+    def _read_cache(self, url: str) -> Optional[Tuple[List[Tuple[str, str]], str, float]]:
+        cache_path = self._get_cache_path(url)
+        if not cache_path or not os.path.exists(cache_path):
+            return None
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if time.time() - data.get("timestamp", 0) < self.CACHE_TTL_SECONDS:
+                return data.get("records"), data.get("used_url", url), data.get("timestamp", 0)
+        except Exception:
+            pass
+        return None
+
+    def _write_cache(self, url: str, records: List[Tuple[str, str]], used_url: str) -> None:
+        cache_path = self._get_cache_path(url)
+        if not cache_path:
+            return
+        try:
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "records": records,
+                    "used_url": used_url,
+                    "timestamp": time.time(),
+                }, f, ensure_ascii=False)
+        except Exception:
+            pass
 
     @staticmethod
     def _build_retry() -> Retry:
@@ -176,13 +216,26 @@ class RemoteHostsClient:
         ipv4_only: bool = False,
         ipv6_only: bool = False,
     ) -> Tuple[List[Tuple[str, str]], str]:
-        """获取并解析远程 hosts（同步版本）。
+        """获取并解析远程 hosts（同步版本），带缓存。
 
         返回：(records, used_url)
         - records: [(ip, domain), ...]
         - used_url: 最终成功的 URL
         """
         urls = [url_override] if url_override else list(self.urls)
+
+        for url in urls:
+            cached = self._read_cache(url)
+            if cached:
+                records, used_url, _ = cached
+                if ipv4_only or ipv6_only:
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv4_only or ipaddress.ip_address(ip).version == 4]
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv6_only or ipaddress.ip_address(ip).version == 6]
+                if records:
+                    return records, used_url
+
         last_err: Optional[Exception] = None
 
         for url in urls:
@@ -191,7 +244,6 @@ class RemoteHostsClient:
                 r.raise_for_status()
                 txt = r.text or ""
 
-                # 尽量避免把 HTML 当成 hosts
                 ctype = (r.headers.get("content-type") or "").lower()
                 head = txt[:500].lower()
                 if "text/html" in ctype and ("<html" in head or "<!doctype" in head):
@@ -199,6 +251,7 @@ class RemoteHostsClient:
 
                 parsed = self.parse_github_hosts_text(txt, ipv4_only=ipv4_only, ipv6_only=ipv6_only)
                 if parsed:
+                    self._write_cache(url, parsed, url)
                     return parsed, url
             except (requests.RequestException, socket.timeout, OSError) as e:
                 last_err = e
@@ -217,7 +270,7 @@ class RemoteHostsClient:
         ipv6_only: bool = False,
         concurrent: bool = True,
     ) -> Tuple[List[Tuple[str, str]], str]:
-        """异步获取远程 hosts。
+        """异步获取远程 hosts，带缓存。
 
         Args:
             url_override: 指定单个 URL（单源模式）
@@ -228,8 +281,32 @@ class RemoteHostsClient:
         返回：(records, used_url)
         """
         if url_override:
+            cached = self._read_cache(url_override)
+            if cached:
+                records, used_url, _ = cached
+                if ipv4_only or ipv6_only:
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv4_only or ipaddress.ip_address(ip).version == 4]
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv6_only or ipaddress.ip_address(ip).version == 6]
+                if records:
+                    return records, used_url
             return await self._fetch_single_url_async(url_override, ipv4_only, ipv6_only)
-        elif concurrent:
+
+        urls = list(self.urls)
+        for url in urls:
+            cached = self._read_cache(url)
+            if cached:
+                records, used_url, _ = cached
+                if ipv4_only or ipv6_only:
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv4_only or ipaddress.ip_address(ip).version == 4]
+                    records = [(ip, dom) for ip, dom in records
+                               if not ipv6_only or ipaddress.ip_address(ip).version == 6]
+                if records:
+                    return records, used_url
+
+        if concurrent:
             return await self._fetch_concurrent_async(ipv4_only, ipv6_only)
         else:
             return await self._fetch_sequential_async(ipv4_only, ipv6_only)
@@ -248,6 +325,7 @@ class RemoteHostsClient:
                 ipv6_only=ipv6_only
             )
             if parsed:
+                self._write_cache(url, parsed, url)
                 return parsed, url
             raise RuntimeError(f"URL {url} 返回的 hosts 内容为空或无效")
         except Exception as e:
@@ -312,6 +390,7 @@ class RemoteHostsClient:
                     content = task.result()
                     parsed = self.parse_github_hosts_text(content, ipv4_only=ipv4_only, ipv6_only=ipv6_only)
                     if parsed:
+                        self._write_cache(url, parsed, url)
                         for p in pending:
                             p.cancel()
                         return parsed, url
@@ -392,13 +471,47 @@ class RemoteHostsClient:
 # ---------------------------------------------------------------------
 # DNS Resolver
 # ---------------------------------------------------------------------
+class DNSCache:
+    """DNS 内存缓存，支持 TTL 自动过期。"""
+
+    def __init__(self, ttl_seconds: int = 300) -> None:
+        self._cache: Dict[str, Tuple[List[str], float]] = {}
+        self._ttl = ttl_seconds
+
+    def get(self, domain: str) -> Optional[List[str]]:
+        domain_lower = domain.lower()
+        if domain_lower in self._cache:
+            ips, timestamp = self._cache[domain_lower]
+            if time.time() - timestamp < self._ttl:
+                return ips
+            del self._cache[domain_lower]
+        return None
+
+    def set(self, domain: str, ips: List[str]) -> None:
+        self._cache[domain.lower()] = (ips, time.time())
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+    def clean_expired(self) -> int:
+        now = time.time()
+        expired = [
+            d for d, (_, ts) in self._cache.items()
+            if now - ts >= self._ttl
+        ]
+        for d in expired:
+            del self._cache[d]
+        return len(expired)
+
+
 class DomainResolver:
     """并发 DNS 解析：输入域名列表，输出 (ip, domain) 列表。"""
 
-    def __init__(self, *, max_workers: Optional[int] = None) -> None:
+    def __init__(self, *, max_workers: Optional[int] = None, dns_cache_ttl: int = 300) -> None:
         if max_workers is None:
             max_workers = DNS_RESOLVER_CONFIG.get("max_workers", 20)
         self.max_workers = max(1, int(max_workers))
+        self._cache = DNSCache(ttl_seconds=dns_cache_ttl)
 
     def resolve(
         self,
@@ -407,23 +520,40 @@ class DomainResolver:
         ipv4_only: bool = False,
         ipv6_only: bool = False,
     ) -> List[Tuple[str, str]]:
-        """同步 DNS 解析（IPv4/IPv6）。"""
+        """同步 DNS 解析（IPv4/IPv6），带缓存。"""
         ds = [str(d).strip() for d in domains if str(d).strip()]
         if not ds:
             return []
 
-        res: List[Tuple[str, str]] = []
-        with concurrent.futures.ThreadPoolExecutor(self.max_workers) as ex:
-            fmap = {ex.submit(self._resolve_single_domain, d, ipv4_only, ipv6_only): d for d in ds}
-            for f in concurrent.futures.as_completed(fmap):
-                dom = fmap.get(f, "")
-                try:
-                    ips = f.result()
-                    for ip in ips:
-                        res.append((ip, dom))
-                except Exception:
-                    pass
-        return res
+        cached_domains = []
+        domains_to_resolve = []
+        for d in ds:
+            cached_ips = self._cache.get(d)
+            if cached_ips is not None:
+                for ip in cached_ips:
+                    if ipv4_only and ipaddress.ip_address(ip).version != 4:
+                        continue
+                    if ipv6_only and ipaddress.ip_address(ip).version != 6:
+                        continue
+                    cached_domains.append((ip, d))
+            else:
+                domains_to_resolve.append(d)
+
+        if domains_to_resolve:
+            with concurrent.futures.ThreadPoolExecutor(self.max_workers) as ex:
+                fmap = {ex.submit(self._resolve_single_domain, d, ipv4_only, ipv6_only): d for d in domains_to_resolve}
+                for f in concurrent.futures.as_completed(fmap):
+                    dom = fmap.get(f, "")
+                    try:
+                        ips = f.result()
+                        if ips:
+                            self._cache.set(dom, ips)
+                        for ip in ips:
+                            cached_domains.append((ip, dom))
+                    except Exception:
+                        pass
+
+        return cached_domains
 
     @staticmethod
     def _resolve_single_domain(domain: str, ipv4_only: bool, ipv6_only: bool) -> List[str]:
@@ -460,24 +590,38 @@ class DomainResolver:
         ipv4_only: bool = False,
         ipv6_only: bool = False,
     ) -> List[Tuple[str, str]]:
-        """异步 DNS 解析（IPv4/IPv6）。"""
+        """异步 DNS 解析（IPv4/IPv6），带缓存。"""
         ds = [str(d).strip() for d in domains if str(d).strip()]
         if not ds:
             return []
 
-        # 创建异步任务
-        tasks = [self._resolve_single_domain_async(d, ipv4_only, ipv6_only) for d in ds]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        cached_results = []
+        domains_to_resolve = []
+        for d in ds:
+            cached_ips = self._cache.get(d)
+            if cached_ips is not None:
+                for ip in cached_ips:
+                    if ipv4_only and ipaddress.ip_address(ip).version != 4:
+                        continue
+                    if ipv6_only and ipaddress.ip_address(ip).version != 6:
+                        continue
+                    cached_results.append((ip, d))
+            else:
+                domains_to_resolve.append(d)
 
-        res: List[Tuple[str, str]] = []
-        for dom, ips_result in zip(ds, results):
-            if isinstance(ips_result, Exception):
-                continue
-            if isinstance(ips_result, list) and ips_result:
-                for ip in ips_result:
-                    res.append((ip, dom))
+        if domains_to_resolve:
+            tasks = [self._resolve_single_domain_async(d, ipv4_only, ipv6_only) for d in domains_to_resolve]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        return res
+            for dom, ips_result in zip(domains_to_resolve, results):
+                if isinstance(ips_result, Exception):
+                    continue
+                if isinstance(ips_result, list) and ips_result:
+                    self._cache.set(dom, ips_result)
+                    for ip in ips_result:
+                        cached_results.append((ip, dom))
+
+        return cached_results
 
     @staticmethod
     async def _resolve_single_domain_async(

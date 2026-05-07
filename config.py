@@ -11,7 +11,44 @@ import os
 import sys
 
 APP_NAME = "SmartHostsTool"
-APP_THEME = "vapor"
+APP_THEME = "cosmo"  # 现代简洁风格基于 cosmo 亮色主题
+
+# ========================================
+# 现代简洁配色方案
+# ========================================
+class ModernColors:
+    """现代简洁风格配色"""
+    # 主背景色（浅灰白）
+    BG_MAIN = "#f5f5f7"
+    BG_CARD = "#ffffff"
+    BG_CARD_HOVER = "#fafafa"
+    
+    # 主题蓝色
+    PRIMARY = "#0078D4"
+    PRIMARY_HOVER = "#106EBE"
+    PRIMARY_LIGHT = "#E6F2FA"
+    
+    # 辅助色
+    SUCCESS = "#107C10"
+    SUCCESS_BG = "#DFF6DD"
+    WARNING = "#F7630C"
+    WARNING_BG = "#FEF3E7"
+    DANGER = "#D13438"
+    DANGER_BG = "#FDE7E9"
+    INFO = "#6B69D6"
+    INFO_BG = "#EBE8FC"
+    
+    # 文字颜色
+    TEXT_PRIMARY = "#1a1a1a"
+    TEXT_SECONDARY = "#666666"
+    TEXT_MUTED = "#999999"
+    
+    # 边框颜色
+    BORDER = "#e0e0e0"
+    BORDER_HOVER = "#c0c0c0"
+    
+    # 阴影色
+    SHADOW = "rgba(0, 0, 0, 0.08)"
 
 # 远程 Hosts 功能目前仅针对 GitHub（逻辑上：只有选择 github.com 预设时启用刷新远程 hosts）
 GITHUB_TARGET_DOMAIN = "github.com"
@@ -51,6 +88,7 @@ REMOTE_HOSTS_URLS = [
 ]
 
 # UI 上用于选择远程 hosts 源的显示项（保留原版文字）
+# 格式：(显示名称, URL或None)
 REMOTE_HOSTS_SOURCE_CHOICES = [
     ("自动（按优先级）", None),
     ("tinsfox（github-hosts.tinsfox.com）", REMOTE_HOSTS_URLS[0]),
@@ -61,6 +99,9 @@ REMOTE_HOSTS_SOURCE_CHOICES = [
     ("GitHub Raw 代理（ghproxy.com）", REMOTE_HOSTS_URLS[5]),
     ("ineo6 镜像（gitlab.com）", REMOTE_HOSTS_URLS[6]),
 ]
+
+# 自定义远程源存储文件名
+CUSTOM_REMOTE_SOURCES_FILE = "custom_remote_sources.json"
 
 SPEED_TEST_CONFIG = {
     "tcp": {

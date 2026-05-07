@@ -19,6 +19,9 @@ env/
 *.swp
 *.swo
 
+# 排除 IDE 生成的代理配置文件
+AGENTS.md
+
 # 排除操作系统文件
 .DS_Store
 Thumbs.db

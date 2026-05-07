@@ -99,16 +99,39 @@ def main() -> None:
 
     logger.info("初始化 GUI 界面...")
     app = ttk.Window(themename=APP_THEME)
+    app.title("智能 Hosts 测速工具")
+    app.geometry("1080x680")
+    app.minsize(980, 620)
+
+    loading_label = ttk.Label(app, text="正在加载...", font=("Segoe UI", 14))
+    loading_label.place(relx=0.5, rely=0.5, anchor="center")
+    app.update()
+
     ico = resource_path("icon.ico")
     if os.path.exists(ico):
         try:
-            app.iconbitmap(ico)
-            logger.debug(f"设置窗口图标: {ico}")
+            from PIL import Image, ImageTk
+            # 使用 PIL 加载并转换图标格式
+            img = Image.open(ico)
+            # 确保图像为 32 位 RGBA 格式
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            # 调整为合适大小
+            img = img.resize((256, 256), Image.Resampling.LANCZOS)
+            icon = ImageTk.PhotoImage(img)
+            # iconphoto(True) 设置为窗口和任务栏的默认图标
+            app.iconphoto(True, icon)
+            logger.debug(f"设置窗口图标成功: {ico}")
         except Exception as e:
             logger.warning(f"设置窗口图标失败: {e}")
+            try:
+                # 备用方案：使用 iconbitmap
+                app.iconbitmap(ico)
+            except Exception:
+                pass
 
-    # 创建主窗口
     hosts_optimizer = HostsOptimizer(app)
+    loading_label.destroy()
     
     # 初始化系统托盘（如果可用）
     tray_icon = None
@@ -150,13 +173,7 @@ def main() -> None:
     logger.info("GUI 界面初始化完成，进入主循环")
     app.mainloop()
     
-    # 清理托盘
-    if tray_icon:
-        try:
-            tray_icon.stop()
-        except Exception:
-            pass
-    
+    # 注意：托盘清理已在 force_exit() 中处理（窗口销毁时）
     logger.info("程序退出")
 
 

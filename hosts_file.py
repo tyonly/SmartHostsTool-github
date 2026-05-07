@@ -44,6 +44,8 @@ class RemoveBlockResult:
 
 
 class HostsFileManager:
+    MAX_BACKUP_COUNT = 10
+
     def __init__(
         self,
         *,
@@ -52,12 +54,14 @@ class HostsFileManager:
         backup_file_fmt: str = BACKUP_FILE_FMT,
         start_mark: str = HOSTS_START_MARK,
         end_mark: str = HOSTS_END_MARK,
+        max_backup_count: int = 10,
     ) -> None:
         self.hosts_path = hosts_path
         self.backup_dir = backup_dir
         self.backup_file_fmt = backup_file_fmt
         self.start_mark = start_mark
         self.end_mark = end_mark
+        self.max_backup_count = max_backup_count
 
     # -----------------------------------------------------------------
     # Backup
@@ -67,12 +71,27 @@ class HostsFileManager:
         return self.backup_dir
 
     def create_backup(self) -> str:
-        """写入前自动备份 hosts。"""
+        """写入前自动备份 hosts，并清理旧备份。"""
         self.ensure_backup_dir()
         ts_name = datetime.now().strftime(self.backup_file_fmt)
         bak_path = os.path.join(self.backup_dir, ts_name)
         shutil.copy2(self.hosts_path, bak_path)
+        self._cleanup_old_backups()
         return bak_path
+
+    def _cleanup_old_backups(self) -> int:
+        """清理旧备份文件，保留最近 N 个。返回清理的文件数量。"""
+        backups = self.list_backups()
+        if len(backups) <= self.max_backup_count:
+            return 0
+        removed_count = 0
+        for old_backup in backups[self.max_backup_count:]:
+            try:
+                os.remove(old_backup)
+                removed_count += 1
+            except OSError:
+                pass
+        return removed_count
 
     def list_backups(self) -> List[str]:
         if not os.path.isdir(self.backup_dir):

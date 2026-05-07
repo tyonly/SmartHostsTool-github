@@ -24,10 +24,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.tooltip import ToolTip
-from tkinter import BooleanVar, Menu, StringVar, filedialog, messagebox, simpledialog
+from tkinter import BooleanVar, Listbox, Menu, StringVar, filedialog, messagebox, simpledialog
 
 from config import (
     APP_NAME,
+    CUSTOM_REMOTE_SOURCES_FILE,
     GITHUB_TARGET_DOMAIN,
     HOSTS_PATH,
     REMOTE_HOSTS_SOURCE_CHOICES,
@@ -36,11 +37,12 @@ from config import (
     SPEED_TEST_CONFIG,
     SCHEDULED_TEST_CONFIG,
     TRAY_CONFIG,
+    ModernColors,
 )
 from hosts_file import HostsFileManager
 from services import DomainResolver, RemoteHostsClient, SpeedTester, EnhancedSpeedTester, SpeedTestConfigManager
 from ui_visuals import GlassBackground
-from utils import atomic_write_json, get_logger, is_admin, resource_path, safe_read_json, user_data_path
+from utils import atomic_write_json, atomic_write_text, get_logger, is_admin, resource_path, safe_read_json, user_data_path
 
 # 主窗口尺寸配置（像素）
 # MAIN_WINDOW_WIDTH_PX: 主窗口宽度（推荐 1000-1200px）
@@ -742,11 +744,189 @@ class HostsOptimizer(ttk.Frame):
     def _setup_style(self):
         style = ttk.Style()
         try:
-            style.configure("Treeview", rowheight=TREEVIEW_ROW_HEIGHT_PX, font=("Segoe UI", 10))
-            style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
-            style.configure("Card.TLabelframe", background=style.colors.bg, bordercolor=style.colors.border)
-            style.configure("Card.TLabelframe.Label", background=style.colors.bg, foreground=style.colors.fg)
-            style.configure("Card.TFrame", background=style.colors.bg)
+            # 基础样式 - 确保前景色为深色
+            style.configure("Treeview", 
+                          rowheight=TREEVIEW_ROW_HEIGHT_PX, 
+                          font=("Microsoft YaHei UI", 10),
+                          foreground=ModernColors.TEXT_PRIMARY)
+            style.configure("Treeview.Heading", 
+                          font=("Microsoft YaHei UI", 10, "bold"),
+                          foreground=ModernColors.TEXT_PRIMARY)
+            
+            # ========================================
+            # 现代简洁风格样式
+            # ========================================
+            
+            # 卡片样式（白色背景 + 浅灰边框）
+            style.configure("Card.TLabelframe", background=ModernColors.BG_CARD, bordercolor=ModernColors.BORDER)
+            style.configure("Card.TLabelframe.Label", background=ModernColors.BG_CARD, foreground=ModernColors.PRIMARY, font=("Microsoft YaHei UI", 9, "bold"))
+            style.configure("Card.TFrame", background=ModernColors.BG_CARD)
+            
+            # ========================================
+            # 统一按钮风格（现代简洁：蓝底白字主按钮 + 白底灰边次按钮）
+            # ========================================
+            
+            # 主按钮（蓝色）- 用于主要操作
+            style.configure("TButton", 
+                           background=ModernColors.PRIMARY,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("TButton",
+                     background=[("active", ModernColors.PRIMARY_HOVER), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff"), ("disabled", "#999999")])
+            
+            # Primary 实心按钮（蓝色）
+            style.configure("primary.TButton",
+                           background=ModernColors.PRIMARY,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("primary.TButton",
+                     background=[("active", ModernColors.PRIMARY_HOVER), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff")])
+            
+            # Success 实心按钮（绿色）
+            style.configure("success.TButton",
+                           background=ModernColors.SUCCESS,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("success.TButton",
+                     background=[("active", "#0d6e0d"), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff")])
+            
+            # Danger 实心按钮（红色）
+            style.configure("danger.TButton",
+                           background=ModernColors.DANGER,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("danger.TButton",
+                     background=[("active", "#b52a2a"), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff")])
+            
+            # Warning 实心按钮（橙色）
+            style.configure("warning.TButton",
+                           background=ModernColors.WARNING,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("warning.TButton",
+                     background=[("active", "#e05a0c"), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff")])
+            
+            # Info 实心按钮（蓝色，用于信息提示）
+            style.configure("info.TButton",
+                           background=ModernColors.PRIMARY,
+                           foreground="#ffffff",
+                           font=("Microsoft YaHei UI", 9),
+                           borderwidth=0,
+                           padding=(12, 6))
+            style.map("info.TButton",
+                     background=[("active", ModernColors.PRIMARY_HOVER), ("disabled", "#cccccc")],
+                     foreground=[("active", "#ffffff")])
+            
+            # 次要按钮（白底灰边，深色文字）- 统一默认按钮风格
+            style.configure("secondary.TButton",
+                           background=ModernColors.BG_CARD,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           bordercolor=ModernColors.BORDER,
+                           borderwidth=1,
+                           padding=(12, 6),
+                           font=("Microsoft YaHei UI", 9))
+            style.map("secondary.TButton",
+                     background=[("active", "#f0f0f0"), ("disabled", "#f5f5f5")],
+                     foreground=[("active", ModernColors.TEXT_PRIMARY), ("disabled", "#999999")],
+                     bordercolor=[("active", ModernColors.BORDER_HOVER)])
+            
+            # 菜单按钮
+            style.configure("TMenubutton",
+                           background=ModernColors.BG_CARD,
+                           foreground=ModernColors.TEXT_SECONDARY,
+                           bordercolor=ModernColors.BORDER,
+                           font=("Microsoft YaHei UI", 9))
+            style.map("TMenubutton",
+                     background=[("active", ModernColors.BG_MAIN)],
+                     foreground=[("active", ModernColors.TEXT_PRIMARY)])
+            
+            # 标签样式
+            style.configure("success.TLabel",
+                           foreground=ModernColors.SUCCESS,
+                           background=ModernColors.BG_MAIN,
+                           font=("Microsoft YaHei UI", 9))
+            style.configure("danger.TLabel",
+                           foreground=ModernColors.DANGER,
+                           background=ModernColors.BG_MAIN,
+                           font=("Microsoft YaHei UI", 9))
+            style.configure("warning.TLabel",
+                           foreground=ModernColors.WARNING,
+                           background=ModernColors.BG_MAIN,
+                           font=("Microsoft YaHei UI", 9))
+            style.configure("info.TLabel",
+                           foreground=ModernColors.PRIMARY,
+                           background=ModernColors.BG_MAIN,
+                           font=("Microsoft YaHei UI", 9))
+            style.configure("secondary.TLabel",
+                           foreground=ModernColors.TEXT_SECONDARY,
+                           background=ModernColors.BG_MAIN,
+                           font=("Microsoft YaHei UI", 9))
+            
+            # 输入框样式
+            style.configure("TEntry",
+                           fieldbackground=ModernColors.BG_CARD,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           insertcolor=ModernColors.PRIMARY,
+                           bordercolor=ModernColors.BORDER)
+            
+            # 复选框样式
+            style.configure("TCheckbutton",
+                           background=ModernColors.BG_MAIN,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           font=("Microsoft YaHei UI", 9))
+            
+            # ========================================
+            # Treeview 表头样式（添加下划线和竖线分隔）
+            # ========================================
+            # 表头背景和文字 + 边框
+            style.configure("Treeview.Heading",
+                           background=ModernColors.BG_MAIN,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           font=("Microsoft YaHei UI", 9, "bold"),
+                           borderwidth=1,
+                           relief="solid")
+            
+            # 使用 map 设置边框颜色
+            style.map("Treeview.Heading",
+                     background=[("active", ModernColors.BG_CARD)],
+                     bordercolor=[("!disabled", ModernColors.BORDER)],
+                     lightcolor=[("!disabled", ModernColors.BORDER)],
+                     darkcolor=[("!disabled", ModernColors.BORDER)])
+            
+            # Treeview 整体样式 - 确保文字颜色为深色
+            style.configure("Treeview",
+                           background=ModernColors.BG_CARD,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           bordercolor=ModernColors.BORDER,
+                           lightcolor=ModernColors.BORDER,
+                           darkcolor=ModernColors.BORDER,
+                           rowheight=TREEVIEW_ROW_HEIGHT_PX,
+                           font=("Microsoft YaHei UI", 10, "normal"),
+                           borderwidth=1)
+            
+            # Treeview 边框和文字颜色样式
+            style.map("Treeview",
+                     foreground=[("!disabled", ModernColors.TEXT_PRIMARY)],
+                     background=[("selected", ModernColors.PRIMARY_LIGHT)],
+                     bordercolor=[("!disabled", ModernColors.BORDER)],
+                     lightcolor=[("!disabled", ModernColors.BORDER)],
+                     darkcolor=[("!disabled", ModernColors.BORDER)])
+            
         except Exception:
             pass
 
@@ -766,20 +946,18 @@ class HostsOptimizer(ttk.Frame):
         return self._rgb_to_hex((r, g, b2))
 
     def _setup_treeview_tags(self, tv: ttk.Treeview):
-        """给 Treeview 加：斑马纹 + 状态色（可用/超时）。"""
+        """给 Treeview 加：斑马纹 + 状态色（现代简洁风格）"""
         try:
-            style = ttk.Style()
-            bg = style.colors.bg
-            fg = style.colors.fg
+            # 现代简洁斑马纹（浅灰交替）
+            row_a = ModernColors.BG_CARD
+            row_b = "#f8f8f8"
 
-            row_a = self._mix(bg, fg, ZEBRA_ROW_A_MIX_RATIO)
-            row_b = self._mix(bg, fg, ZEBRA_ROW_B_MIX_RATIO)
+            tv.tag_configure("row_a", background=row_a, foreground=ModernColors.TEXT_PRIMARY)
+            tv.tag_configure("row_b", background=row_b, foreground=ModernColors.TEXT_PRIMARY)
 
-            tv.tag_configure("row_a", background=row_a)
-            tv.tag_configure("row_b", background=row_b)
-
-            tv.tag_configure("ok", foreground=style.colors.success)
-            tv.tag_configure("bad", foreground=style.colors.danger)
+            # 状态色
+            tv.tag_configure("ok", foreground=ModernColors.SUCCESS)
+            tv.tag_configure("bad", foreground=ModernColors.DANGER)
         except Exception:
             pass
 
@@ -797,22 +975,25 @@ class HostsOptimizer(ttk.Frame):
     # UI
     # -----------------------------------------------------------------
     def create_widgets(self):
-        # --- App Bar ---
-        appbar = ttk.Frame(self, padding=PADDING_VALUES["appbar"])
+        # --- App Bar（赛博朋克风格） ---
+        appbar = ttk.Frame(self, padding=PADDING_VALUES["appbar"], style="Card.TFrame")
         appbar.pack(fill=X)
 
-        left = ttk.Frame(appbar)
+        left = ttk.Frame(appbar, style="Card.TFrame")
         left.pack(side=LEFT, fill=X, expand=True)
+        
+        # 现代简洁标题
         title = ttk.Label(
             left,
             text="智能 Hosts 测速工具",
-            font=("Segoe UI", FONT_SIZES["title"], "bold"),
-            bootstyle="inverse-primary",
+            font=("Microsoft YaHei UI", FONT_SIZES["title"], "bold"),
+            foreground=ModernColors.PRIMARY,
+            background=ModernColors.BG_CARD,
             padding=PADDING_VALUES["title"],
         )
         title.pack(side=LEFT, fill=X, expand=True)
 
-        actions = ttk.Frame(appbar)
+        actions = ttk.Frame(appbar, style="Card.TFrame")
         actions.pack(side=RIGHT)
 
         # 源选择 - 下拉按钮
@@ -823,11 +1004,14 @@ class HostsOptimizer(ttk.Frame):
         self.remote_source_btn = ttk.Menubutton(
             actions,
             textvariable=self.remote_source_btn_text,
-            bootstyle="secondary",
+            style="secondary.TButton",
             width=BUTTON_WIDTHS["remote_source"],
         )
         self.remote_source_btn.pack(side=LEFT, padx=(12, 8))
 
+        # 加载自定义远程源
+        self._load_custom_remote_sources()
+        
         menu = Menu(self.remote_source_btn, tearoff=0)
         for label, _ in REMOTE_HOSTS_SOURCE_CHOICES:
             menu.add_radiobutton(
@@ -836,6 +1020,22 @@ class HostsOptimizer(ttk.Frame):
                 value=label,
                 command=self.on_source_change,
             )
+        
+        # 添加分隔符和自定义源
+        if self._custom_remote_sources:
+            menu.add_separator()
+            for item in self._custom_remote_sources:
+                label = item["name"]
+                menu.add_radiobutton(
+                    label=f"  {label}",
+                    variable=self.remote_source_var,
+                    value=label,
+                    command=self.on_source_change,
+                )
+        
+        # 添加分隔符和管理选项
+        menu.add_separator()
+        menu.add_command(label="管理远程源...", command=self._show_manage_remote_sources_dialog)
         self.remote_source_btn["menu"] = menu
 
         # 刷新远程 Hosts
@@ -852,17 +1052,17 @@ class HostsOptimizer(ttk.Frame):
         # 主操作
         self.pause_test_btn = ttk.Button(
             actions,
-            text="⏸ 暂停测速",
+            text="暂停测速",
             command=self.pause_test,
-            bootstyle=WARNING,
+            bootstyle=SECONDARY,
             width=BUTTON_WIDTHS["pause_test"],
             state=DISABLED,
         )
-        self.pause_test_btn.pack(side=RIGHT, padx=(8, 0))
+        self.pause_test_btn.pack(side=RIGHT, padx=(0, 0))
 
         self.start_test_btn = ttk.Button(
             actions,
-            text="▶ 开始测速",
+            text="开始测速",
             command=self.start_test,
             bootstyle=PRIMARY,
             width=BUTTON_WIDTHS["start_test"],
@@ -870,7 +1070,7 @@ class HostsOptimizer(ttk.Frame):
         )
         self.start_test_btn.pack(side=RIGHT, padx=5)
 
-        # 更多功能
+        # 更多功能（放在暂停测速后面，从右到左顺序：暂停测速->开始测速->更多）
         self.more_btn = ttk.Menubutton(actions, text="🧰 更多 ▾", bootstyle="secondary", width=BUTTON_WIDTHS["more"])
         self.more_btn.pack(side=RIGHT, padx=(0, 8))
         more_menu = Menu(self.more_btn, tearoff=0)
@@ -901,7 +1101,7 @@ class HostsOptimizer(ttk.Frame):
         body = ttk.Frame(self)
         body.pack(fill=BOTH, expand=True, pady=PADDING_VALUES["body_vertical"])
 
-        paned = ttk.PanedWindow(body, orient=HORIZONTAL)
+        paned = ttk.Panedwindow(body, orient=HORIZONTAL)
         paned.pack(fill=BOTH, expand=True)
 
         # 左侧面板
@@ -913,9 +1113,13 @@ class HostsOptimizer(ttk.Frame):
         notebook = ttk.Notebook(left_card)
         notebook.pack(fill=BOTH, expand=True)
 
-        # 远程Hosts页 - 保留原版文字
+        # 域名页 - 移到第一个位置
+        self.custom_frame = ttk.Frame(notebook, padding=PADDING_VALUES["tab_frame"])
+        notebook.add(self.custom_frame, text="域名")
+
+        # 远程Hosts页
         self.remote_frame = ttk.Frame(notebook, padding=PADDING_VALUES["tab_frame"])
-        notebook.add(self.remote_frame, text="🌐远程Hosts（仅 GitHub）")
+        notebook.add(self.remote_frame, text="远程Hosts")
         remote_config = TREEVIEW_CONFIGS["remote"]
         self.remote_tree = self._create_treeview(
             self.remote_frame,
@@ -924,12 +1128,9 @@ class HostsOptimizer(ttk.Frame):
             remote_config["widths"]
         )
 
-        # 自定义预设页 - 保留原版文字
-        self.custom_frame = ttk.Frame(notebook, padding=PADDING_VALUES["tab_frame"])
-        notebook.add(self.custom_frame, text="自定义预设")
-
+        # 所有解析结果页
         self.all_resolved_frame = ttk.Frame(notebook, padding=PADDING_VALUES["tab_frame"])
-        notebook.add(self.all_resolved_frame, text="🔍 所有解析结果")
+        notebook.add(self.all_resolved_frame, text="解析结果")
         remote_config = TREEVIEW_CONFIGS["remote"]
         self.all_resolved_tree = self._create_treeview(
             self.all_resolved_frame,
@@ -941,11 +1142,11 @@ class HostsOptimizer(ttk.Frame):
         # 自定义工具栏
         custom_toolbar = ttk.Frame(self.custom_frame)
         custom_toolbar.pack(fill=X, pady=(0, 10))
-        self.add_preset_btn = ttk.Button(custom_toolbar, text="➕ 添加", command=self.add_preset, bootstyle=SUCCESS, width=BUTTON_WIDTHS["add_preset"])
+        self.add_preset_btn = ttk.Button(custom_toolbar, text="添加", command=self.add_preset, bootstyle=SECONDARY, width=BUTTON_WIDTHS["add_preset"])
         self.add_preset_btn.pack(side=LEFT, padx=(0, 6))
-        self.delete_preset_btn = ttk.Button(custom_toolbar, text="🗑 删除", command=self.delete_preset, bootstyle=DANGER, width=BUTTON_WIDTHS["delete_preset"])
+        self.delete_preset_btn = ttk.Button(custom_toolbar, text="删除", command=self.delete_preset, bootstyle=SECONDARY, width=BUTTON_WIDTHS["delete_preset"])
         self.delete_preset_btn.pack(side=LEFT, padx=6)
-        self.resolve_preset_btn = ttk.Button(custom_toolbar, text="批量解析", command=self.resolve_selected_presets, bootstyle=INFO, width=BUTTON_WIDTHS["resolve_preset"])
+        self.resolve_preset_btn = ttk.Button(custom_toolbar, text="批量解析", command=self.resolve_selected_presets, bootstyle=PRIMARY, width=BUTTON_WIDTHS["resolve_preset"])
         self.resolve_preset_btn.pack(side=LEFT, padx=6)
 
         tip = ttk.Label(
@@ -972,8 +1173,21 @@ class HostsOptimizer(ttk.Frame):
         right_card = ttk.Labelframe(right_panel, text="测速结果", padding=PADDING_VALUES["card"], style="Card.TLabelframe")
         right_card.pack(fill=BOTH, expand=True)
 
-        # 结果列表 - 保留原版文字
-        self.result_tree = ttk.Treeview(right_card, columns=["select", "ip", "domain", "delay", "jitter", "stability", "status"], show="headings")
+        # 结果列表 - 保留原版文字（添加横向滚动条和点击排序）
+        result_frame = ttk.Frame(right_card)
+        result_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
+
+        h_scroll = ttk.Scrollbar(result_frame, orient=HORIZONTAL)
+        h_scroll.pack(side=BOTTOM, fill=X)
+
+        self.result_tree = ttk.Treeview(
+            result_frame,
+            columns=["select", "ip", "domain", "delay", "jitter", "stability", "status"],
+            show="headings",
+            xscrollcommand=h_scroll.set,
+        )
+        h_scroll.config(command=self.result_tree.xview)
+
         cols = [
             ("select", "选择", COLUMN_WIDTHS["select"]),
             ("ip", "IP 地址", COLUMN_WIDTHS["ip"]),
@@ -983,12 +1197,18 @@ class HostsOptimizer(ttk.Frame):
             ("stability", "稳定性", COLUMN_WIDTHS["stability"]),
             ("status", "状态", COLUMN_WIDTHS["status"]),
         ]
+        self._sort_column = "delay"
+        self._sort_reverse = False
         for c, t, w in cols:
-            self.result_tree.heading(c, text=t)
+            self.result_tree.heading(c, text=t, command=lambda col=c: self._on_sort_column(col))
             self.result_tree.column(c, width=w, anchor="center" if c == "select" else "w")
-        self.result_tree.pack(fill=BOTH, expand=True, pady=(0, 10))
+
+        self._update_sort_indicators()
+
+        self.result_tree.pack(fill=BOTH, expand=True)
         self._setup_treeview_tags(self.result_tree)
         self.result_tree.bind("<Button-1>", self.on_tree_click)
+        self.result_tree.bind("<Button-3>", self.on_result_tree_right_click)
 
         action_bar = ttk.Frame(right_card)
         action_bar.pack(fill=X)
@@ -996,20 +1216,20 @@ class HostsOptimizer(ttk.Frame):
         # 回滚 Hosts（从自动备份恢复）
         self.rollback_hosts_btn = ttk.Button(
             action_bar,
-            text="↩ 回滚 Hosts",
+            text="回滚 Hosts",
             command=self.rollback_hosts,
-            bootstyle=WARNING,
+            bootstyle=SECONDARY,
             width=BUTTON_WIDTHS["rollback_hosts"],
             state=DISABLED,
         )
         self.rollback_hosts_btn.pack(side=LEFT)
 
-        # 底部按钮 - 保留原版文字
+        # 底部按钮 - 统一使用 primary 风格
         self.write_best_btn = ttk.Button(
             action_bar,
             text="一键写入最优 IP",
             command=self.write_best_ip_to_hosts,
-            bootstyle=SUCCESS,
+            bootstyle=PRIMARY,
             width=BUTTON_WIDTHS["write_best"],
         )
         self.write_best_btn.pack(side=RIGHT, padx=(8, 0))
@@ -1017,7 +1237,7 @@ class HostsOptimizer(ttk.Frame):
             action_bar,
             text="写入选中到 Hosts",
             command=self.write_selected_to_hosts,
-            bootstyle=PRIMARY,
+            bootstyle=SECONDARY,
             width=BUTTON_WIDTHS["write_selected"],
         )
         self.write_selected_btn.pack(side=RIGHT)
@@ -1559,8 +1779,20 @@ class HostsOptimizer(ttk.Frame):
 
         # 刷新 UI
         self.preset_tree.delete(*self.preset_tree.get_children())
+        all_items = []
         for idx, x in enumerate(self.custom_presets):
-            self._tv_insert(self.preset_tree, [x], idx)
+            item_id = self.preset_tree.insert("", "end", values=[x], iid=x)
+            all_items.append(item_id)
+
+        # 【关键改进】：自动选中所有预设域名，让刷新按钮默认可用
+        if all_items:
+            self.preset_tree.selection_set(all_items)
+            self.current_selected_presets = list(self.custom_presets)
+            self.is_github_selected = GITHUB_TARGET_DOMAIN in self.current_selected_presets
+            # 更新按钮状态
+            self.resolve_preset_btn.config(state=NORMAL)
+            self.refresh_remote_btn.config(state=NORMAL if self.is_github_selected else DISABLED)
+            self.check_start_btn()
 
     def save_presets(self):
         try:
@@ -1607,12 +1839,281 @@ class HostsOptimizer(ttk.Frame):
     # -----------------------------------------------------------------
     # Remote hosts
     # -----------------------------------------------------------------
+    
+    def _load_custom_remote_sources(self):
+        """加载自定义远程源，默认包含预设远程源"""
+        try:
+            from utils import safe_read_json
+            path = user_data_path(CUSTOM_REMOTE_SOURCES_FILE)
+            data = safe_read_json(path)
+            if isinstance(data, list) and data:
+                self._custom_remote_sources = data
+            else:
+                # 没有自定义源时，加载预设远程源作为默认
+                self._custom_remote_sources = [
+                    {"name": label, "url": url, "available": True}
+                    for label, url in REMOTE_HOSTS_SOURCE_CHOICES
+                    if url  # 跳过"自动（按优先级）"等无URL项
+                ]
+                self._save_custom_remote_sources()
+            self.logger.info(f"已加载 {len(self._custom_remote_sources)} 个远程源")
+        except Exception:
+            self._custom_remote_sources = []
+    
+    def _save_custom_remote_sources(self):
+        """保存自定义远程源"""
+        try:
+            from utils import atomic_write_json
+            path = user_data_path(CUSTOM_REMOTE_SOURCES_FILE)
+            atomic_write_json(path, self._custom_remote_sources)
+            self.logger.info(f"已保存 {len(self._custom_remote_sources)} 个自定义远程源")
+        except Exception as e:
+            self.logger.error(f"保存自定义远程源失败: {e}")
+    
+    def _get_remote_source_url(self, name: str) -> Optional[str]:
+        """根据名称获取远程源URL"""
+        # 先检查预设源
+        mp = {l: u for l, u in REMOTE_HOSTS_SOURCE_CHOICES}
+        if name in mp:
+            return mp[name]
+        # 再检查自定义源
+        for item in self._custom_remote_sources:
+            if item["name"] == name:
+                return item["url"]
+        return None
+    
+    def _show_manage_remote_sources_dialog(self):
+        """显示管理远程源对话框"""
+        dialog = ttk.Toplevel(self.master)
+        dialog.title("管理远程源")
+        dialog.geometry("600x400")
+        dialog.transient(self.master)
+        dialog.grab_set()
+        
+        # 主框架
+        main_frame = ttk.Frame(dialog, padding=15)
+        main_frame.pack(fill=BOTH, expand=True)
+        
+        # 标题
+        ttk.Label(main_frame, text="自定义远程源管理", font=("Microsoft YaHei UI", 12, "bold")).pack(anchor=W, pady=(0, 15))
+        
+        # 列表框架
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=BOTH, expand=True, pady=(0, 10))
+        
+        # 列表框和滚动条
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        listbox = Listbox(list_frame, yscrollcommand=scrollbar.set, font=("Microsoft YaHei UI", 9), height=10)
+        listbox.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+        
+        # 存储URL用于快速访问
+        url_map = {}
+        
+        def refresh_list():
+            listbox.delete(0, END)
+            url_map.clear()
+            for item in self._custom_remote_sources:
+                name = item["name"]
+                url = item["url"]
+                status = "✓" if item.get("available", True) else "✗"
+                listbox.insert(END, f"{name}  [{status}]")
+                url_map[listbox.size() - 1] = url
+        
+        refresh_list()
+        
+        # 按钮框架
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=X, pady=(10, 0))
+        
+        # 状态标签
+        status_label = ttk.Label(btn_frame, text="", bootstyle="secondary")
+        status_label.pack(side=LEFT)
+        
+        # 右侧按钮
+        right_btn_frame = ttk.Frame(btn_frame)
+        right_btn_frame.pack(side=RIGHT)
+        
+        def add_source():
+            """添加远程源"""
+            add_dialog = ttk.Toplevel(dialog)
+            add_dialog.title("添加远程源")
+            add_dialog.geometry("450x200")
+            add_dialog.transient(dialog)
+            add_dialog.grab_set()
+            
+            frame = ttk.Frame(add_dialog, padding=20)
+            frame.pack(fill=BOTH, expand=True)
+            
+            ttk.Label(frame, text="名称：").grid(row=0, column=0, sticky=W, pady=5)
+            name_entry = ttk.Entry(frame, width=40)
+            name_entry.grid(row=0, column=1, sticky=W, padx=10, pady=5)
+            
+            ttk.Label(frame, text="URL：").grid(row=1, column=0, sticky=W, pady=5)
+            url_entry = ttk.Entry(frame, width=40)
+            url_entry.grid(row=1, column=1, sticky=W, padx=10, pady=5)
+            
+            ttk.Label(frame, text="（输入包含 hosts 记录的 URL 地址）", font=("Microsoft YaHei UI", 8), bootstyle="secondary").grid(row=2, column=1, sticky=W)
+            
+            def do_add():
+                name = name_entry.get().strip()
+                url = url_entry.get().strip()
+                if not name or not url:
+                    messagebox.showwarning("提示", "请填写名称和URL", parent=add_dialog)
+                    return
+                if not url.startswith("http"):
+                    messagebox.showwarning("提示", "URL必须以http或https开头", parent=add_dialog)
+                    return
+                # 检查是否已存在
+                if any(item["name"] == name for item in self._custom_remote_sources):
+                    messagebox.showwarning("提示", "该名称已存在", parent=add_dialog)
+                    return
+                
+                self._custom_remote_sources.append({
+                    "name": name,
+                    "url": url,
+                    "available": True
+                })
+                self._save_custom_remote_sources()
+                self._rebuild_remote_source_menu()
+                refresh_list()
+                add_dialog.destroy()
+                status_label.config(text="已添加", bootstyle="success")
+            
+            btn_frame2 = ttk.Frame(frame)
+            btn_frame2.grid(row=3, column=0, columnspan=2, pady=20)
+            ttk.Button(btn_frame2, text="添加", command=do_add, bootstyle=PRIMARY).pack(side=LEFT, padx=5)
+            ttk.Button(btn_frame2, text="取消", command=add_dialog.destroy).pack(side=LEFT)
+        
+        def delete_source():
+            """删除选中的远程源"""
+            sel = listbox.curselection()
+            if not sel:
+                messagebox.showinfo("提示", "请先选择要删除的项")
+                return
+            idx = sel[0]
+            # 找到对应的源
+            if idx < len(self._custom_remote_sources):
+                name = self._custom_remote_sources[idx]["name"]
+                if messagebox.askyesno("确认", f"确定要删除「{name}」吗？"):
+                    del self._custom_remote_sources[idx]
+                    self._save_custom_remote_sources()
+                    self._rebuild_remote_source_menu()
+                    refresh_list()
+                    status_label.config(text="已删除", bootstyle="success")
+        
+        def test_source():
+            """测试选中的远程源连通性"""
+            sel = listbox.curselection()
+            if not sel:
+                messagebox.showinfo("提示", "请先选择要测试的项")
+                return
+            idx = sel[0]
+            if idx >= len(self._custom_remote_sources):
+                return
+            
+            item = self._custom_remote_sources[idx]
+            url = item["url"]
+            status_label.config(text=f"正在测试 {item['name']}...", bootstyle="info")
+            dialog.update()
+            
+            # 后台线程测试连通性
+            threading.Thread(target=self._test_remote_source_thread, args=(idx, url, dialog, status_label, refresh_list), daemon=True).start()
+        
+        def test_all_sources():
+            """测试所有自定义远程源的连通性"""
+            if not self._custom_remote_sources:
+                messagebox.showinfo("提示", "没有自定义远程源")
+                return
+            status_label.config(text="正在测试所有源...", bootstyle="info")
+            dialog.update()
+            threading.Thread(target=self._test_all_remote_sources_thread, args=(dialog, status_label, refresh_list), daemon=True).start()
+        
+        ttk.Button(right_btn_frame, text="测试连通性", command=test_source, bootstyle=INFO).pack(side=LEFT, padx=2)
+        ttk.Button(right_btn_frame, text="测试全部", command=test_all_sources, bootstyle=INFO).pack(side=LEFT, padx=2)
+        ttk.Button(right_btn_frame, text="添加", command=add_source, bootstyle=PRIMARY).pack(side=LEFT, padx=2)
+        ttk.Button(right_btn_frame, text="删除", command=delete_source, bootstyle=DANGER).pack(side=LEFT, padx=2)
+        
+        # 底部关闭按钮
+        ttk.Frame(main_frame).pack(fill=X, pady=5)
+        ttk.Button(main_frame, text="关闭", command=dialog.destroy, width=10).pack(pady=(10, 0))
+        
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+    
+    def _test_remote_source_thread(self, idx: int, url: str, dialog: ttk.Toplevel, status_label, refresh_callback):
+        """后台测试单个远程源连通性"""
+        try:
+            import requests
+            response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            available = response.status_code == 200
+            self._custom_remote_sources[idx]["available"] = available
+            self._save_custom_remote_sources()
+            self.master.after(0, lambda: status_label.config(
+                text="可用" if available else "不可用",
+                bootstyle="success" if available else "danger"
+            ))
+            self.master.after(0, lambda: refresh_callback())
+        except Exception as e:
+            self._custom_remote_sources[idx]["available"] = False
+            self._save_custom_remote_sources()
+            self.master.after(0, lambda: status_label.config(text=f"不可用: {str(e)[:30]}", bootstyle="danger"))
+            self.master.after(0, lambda: refresh_callback())
+    
+    def _test_all_remote_sources_thread(self, dialog: ttk.Toplevel, status_label, refresh_callback):
+        """后台测试所有自定义远程源连通性"""
+        available_count = 0
+        for idx, item in enumerate(self._custom_remote_sources):
+            try:
+                import requests
+                response = requests.get(item["url"], timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                item["available"] = response.status_code == 200
+                if item["available"]:
+                    available_count += 1
+            except Exception:
+                item["available"] = False
+        
+        self._save_custom_remote_sources()
+        self.master.after(0, lambda: status_label.config(
+            text=f"测试完成：{available_count}/{len(self._custom_remote_sources)} 可用",
+            bootstyle="success" if available_count > 0 else "danger"
+        ))
+        self.master.after(0, lambda: refresh_callback())
+    
+    def _rebuild_remote_source_menu(self):
+        """重建远程源下拉菜单"""
+        menu = Menu(self.remote_source_btn, tearoff=0)
+        for label, _ in REMOTE_HOSTS_SOURCE_CHOICES:
+            menu.add_radiobutton(
+                label=label,
+                variable=self.remote_source_var,
+                value=label,
+                command=self.on_source_change,
+            )
+        
+        if self._custom_remote_sources:
+            menu.add_separator()
+            for item in self._custom_remote_sources:
+                label = item["name"]
+                status = "✓" if item.get("available", True) else "✗"
+                menu.add_radiobutton(
+                    label=f"  {label} [{status}]",
+                    variable=self.remote_source_var,
+                    value=label,
+                    command=self.on_source_change,
+                )
+        
+        menu.add_separator()
+        menu.add_command(label="管理远程源...", command=self._show_manage_remote_sources_dialog)
+        self.remote_source_btn["menu"] = menu
+
     def on_source_change(self):
         c = self.remote_source_var.get()
         self.remote_source_btn_text.set(self._format_remote_source_button_text(c))
-        mp = {l: u for l, u in REMOTE_HOSTS_SOURCE_CHOICES}
-        self.remote_source_url_override = mp.get(c)
-        if self.remote_source_url_override:
+        url = self._get_remote_source_url(c)
+        self.remote_source_url_override = url
+        if url:
             self.status_label.config(text=f"已选择远程源：{c}", bootstyle=INFO)
             self._toast("数据源切换", f"已切换到：{c}", bootstyle="info")
         else:
@@ -1985,6 +2486,66 @@ class HostsOptimizer(ttk.Frame):
         # 二级排序：延迟更低优先
         return (score, float(ms))
 
+    def _on_sort_column(self, col: str) -> None:
+        """表头点击排序"""
+        if self._sort_column == col:
+            self._sort_reverse = not self._sort_reverse
+        else:
+            self._sort_column = col
+            self._sort_reverse = False
+
+        col_index = {
+            "select": 0, "ip": 1, "domain": 2, "delay": 3,
+            "jitter": 4, "stability": 5, "status": 6
+        }.get(col, 3)
+
+        def sort_key(row):
+            if len(row) == 7:
+                ip, d, ms, st, sel, jitter, stability = row
+            else:
+                ip, d, ms, st, _ = row[:5]
+                jitter, stability = 0.0, 0.0
+
+            values = [sel, ip, d, ms, jitter, stability, st]
+            val = values[col_index]
+
+            if col in ("delay", "jitter", "stability"):
+                try:
+                    return float(val) if val != "-" else 999999
+                except (ValueError, TypeError):
+                    return 999999
+            return str(val).lower()
+
+        self.test_results.sort(key=sort_key, reverse=self._sort_reverse)
+        self._refresh_result_tree()
+        self._update_sort_indicators()
+
+    def _update_sort_indicators(self) -> None:
+        """更新表头排序指示器"""
+        sort_indicator = "▼" if self._sort_reverse else "▲"
+        col_configs = [
+            ("select", "选择", 64), ("ip", "IP 地址", 150), ("domain", "域名", 200),
+            ("delay", "延迟 (ms)", 90), ("jitter", "抖动 (ms)", 90),
+            ("stability", "稳定性", 80), ("status", "状态", 120)
+        ]
+        for c, t, w in col_configs:
+            text = f"{t} {sort_indicator}" if c == self._sort_column else t
+            self.result_tree.heading(c, text=text, command=lambda col=c: self._on_sort_column(col))
+
+    def _refresh_result_tree(self) -> None:
+        """刷新结果表格显示"""
+        if not self.result_tree.winfo_exists():
+            return
+        self.result_tree.delete(*self.result_tree.get_children())
+        for idx, row in enumerate(self.test_results):
+            if len(row) == 7:
+                ip, d, ms, st, sel, jitter, stability = row
+                jitter_str = f"{jitter:.1f}" if jitter > 0 else "-"
+                stability_str = f"{stability:.0f}" if stability > 0 else "-"
+                self._tv_insert(self.result_tree, ["✓" if sel else "□", ip, d, ms, jitter_str, stability_str, st], idx, status=st)
+            else:
+                ip, d, ms, st, sel = row[:5]
+                self._tv_insert(self.result_tree, ["✓" if sel else "□", ip, d, ms, "-", "-", st], idx, status=st)
 
     def _flush_sort_results(self):
         self._sort_after_id = None
@@ -2027,6 +2588,111 @@ class HostsOptimizer(ttk.Frame):
     # -----------------------------------------------------------------
     # Result selection
     # -----------------------------------------------------------------
+    def on_result_tree_right_click(self, event):
+        """结果表格右键菜单：复制/保存"""
+        item = self.result_tree.identify_row(event.y)
+        if not item:
+            return
+
+        v = self.result_tree.item(item, "values")
+        if not v or len(v) < 3:
+            return
+
+        ip = v[1]
+        domain = v[2]
+
+        menu = Menu(self.result_tree, tearoff=0)
+        menu.add_command(label=f"复制 IP: {ip}", command=lambda: self._copy_to_clipboard(ip))
+        menu.add_command(label=f"复制域名: {domain}", command=lambda: self._copy_to_clipboard(domain))
+        menu.add_command(label=f"复制 {ip} {domain}", command=lambda: self._copy_to_clipboard(f"{ip} {domain}"))
+        menu.add_separator()
+        menu.add_command(label="复制所有可用结果", command=self._copy_all_available_results)
+        menu.add_separator()
+        menu.add_command(label="导出为 SwitchHosts 格式", command=lambda: self._export_switchhosts(item))
+        menu.add_command(label="导出全部结果", command=self._export_all_results)
+
+        menu.post(event.x_root, event.y_root)
+
+    def _copy_to_clipboard(self, text: str) -> None:
+        """复制文本到剪贴板"""
+        try:
+            self.master.clipboard_clear()
+            self.master.clipboard_append(text)
+            self._toast("已复制", f"已复制到剪贴板: {text[:50]}...", bootstyle="success")
+        except Exception as e:
+            self.logger.warning(f"复制到剪贴板失败: {e}")
+
+    def _copy_all_available_results(self) -> None:
+        """复制所有可用结果到剪贴板"""
+        available = [(ip, d) for row in self.test_results
+                     if len(row) == 7 for ip, d, ms, st, _, _, _ in [row]
+                     if st.startswith("可用")]
+        if not available:
+            self._toast("提示", "没有可用的测速结果", bootstyle="info")
+            return
+
+        text = "\n".join([f"{ip} {domain}" for ip, domain in available])
+        self._copy_to_clipboard(text)
+        self._toast("已复制", f"已复制 {len(available)} 条记录到剪贴板", bootstyle="success")
+
+    def _export_switchhosts(self, item) -> None:
+        """导出单条结果为 SwitchHosts 格式"""
+        v = self.result_tree.item(item, "values")
+        if not v or len(v) < 3:
+            return
+
+        ip = v[1]
+        domain = v[2]
+
+        default_filename = f"{domain.replace('.', '_')}_switchhosts.txt"
+        filepath = filedialog.asksaveasfilename(
+            title="导出 SwitchHosts 格式",
+            initialdir=os.path.expanduser("~"),
+            initialfile=default_filename,
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        )
+        if not filepath:
+            return
+
+        content = f"# SwitchHosts\n# Format: IP Domain\n{ip} {domain}\n"
+        try:
+            atomic_write_text(filepath, content)
+            self._toast("导出成功", f"已导出到: {filepath}", bootstyle="success")
+        except Exception as e:
+            self.logger.error(f"导出失败: {e}")
+            messagebox.showerror("导出失败", f"无法保存文件: {e}")
+
+    def _export_all_results(self) -> None:
+        """导出全部测速结果为 SwitchHosts 格式"""
+        if not self.test_results:
+            self._toast("提示", "没有可导出的测速结果", bootstyle="info")
+            return
+
+        filepath = filedialog.asksaveasfilename(
+            title="导出全部结果",
+            initialdir=os.path.expanduser("~"),
+            initialfile="smart_hosts_export.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        )
+        if not filepath:
+            return
+
+        lines = ["# SmartHostsTool 导出", "# SwitchHosts 格式", ""]
+        for row in self.test_results:
+            if len(row) == 7:
+                ip, domain, ms, st, _, _, _ = row
+            else:
+                ip, domain, ms, st, _ = row[:5]
+            if st.startswith("可用"):
+                lines.append(f"{ip} {domain}")
+
+        try:
+            atomic_write_text(filepath, "\n".join(lines))
+            self._toast("导出成功", f"已导出 {len([l for l in lines if l and not l.startswith('#')])} 条记录", bootstyle="success")
+        except Exception as e:
+            self.logger.error(f"导出失败: {e}")
+            messagebox.showerror("导出失败", f"无法保存文件: {e}")
+
     def on_tree_click(self, event):
         if self.result_tree.identify_column(event.x) != "#1":
             return
