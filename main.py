@@ -94,6 +94,14 @@ def main() -> None:
     check_and_elevate()
     logger.info("管理员权限检查通过")
 
+    # Windows 任务栏图标稳定性：设置 AppUserModelID（避免被 python.exe 默认图标/分组覆盖）
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_NAME)
+        except Exception:
+            pass
+
     import ttkbootstrap as ttk  # 延迟导入，避免 writer mode 拉起 GUI 依赖
     from main_window import HostsOptimizer
 
@@ -103,12 +111,40 @@ def main() -> None:
     app.geometry("1080x680")
     app.minsize(980, 620)
 
-    loading_label = ttk.Label(app, text="正在加载...", font=("Segoe UI", 14))
-    loading_label.place(relx=0.5, rely=0.5, anchor="center")
-    app.update()
+    # 启动体验优化：避免先显示一个“空的大窗口 + 正在加载”再卡住几秒。
+    # 做法：先隐藏主窗口，仅显示一个小的加载提示窗；初始化完成后再显示主窗口。
+    app.withdraw()
+    splash = ttk.Toplevel(app)
+    splash.title(APP_NAME)
+    try:
+        splash.overrideredirect(True)  # 无边框小窗
+    except Exception:
+        pass
+    splash.attributes("-topmost", True)
+    splash.geometry("360x120")
+    splash.resizable(False, False)
+    splash_label = ttk.Label(splash, text="正在加载…", font=("Segoe UI", 14))
+    splash_label.pack(expand=True, fill="both", padx=18, pady=18)
+    try:
+        splash.update_idletasks()
+        x = (splash.winfo_screenwidth() // 2) - (360 // 2)
+        y = (splash.winfo_screenheight() // 2) - (120 // 2)
+        splash.geometry(f"360x120+{x}+{y}")
+    except Exception:
+        pass
+    splash.update()
 
     ico = resource_path("icon.ico")
     if os.path.exists(ico):
+        # 先用 iconbitmap 尽早覆盖窗口/任务栏图标（避免显示 Python 默认图标）
+        try:
+            app.iconbitmap(ico)
+        except Exception:
+            pass
+        try:
+            splash.iconbitmap(ico)
+        except Exception:
+            pass
         try:
             from PIL import Image, ImageTk
             # 使用 PIL 加载并转换图标格式
@@ -121,6 +157,11 @@ def main() -> None:
             icon = ImageTk.PhotoImage(img)
             # iconphoto(True) 设置为窗口和任务栏的默认图标
             app.iconphoto(True, icon)
+            # 必须保留引用，避免被 GC 回收后回退到默认（Python 图标）
+            try:
+                app._iconphoto_ref = icon  # type: ignore[attr-defined]
+            except Exception:
+                pass
             logger.debug(f"设置窗口图标成功: {ico}")
         except Exception as e:
             logger.warning(f"设置窗口图标失败: {e}")
@@ -130,47 +171,107 @@ def main() -> None:
             except Exception:
                 pass
 
-    hosts_optimizer = HostsOptimizer(app)
-    loading_label.destroy()
-    
-    # 初始化系统托盘（如果可用）
-    tray_icon = None
-    if TRAY_CONFIG.get("minimize_to_tray", True):
+    # splash 结束后立即显示主窗口（占位层），重活放到 mainloop 里分段初始化
+    loading_frame = ttk.Frame(app, padding=18)
+    loading_frame.pack(fill="both", expand=True)
+    ttk.Label(loading_frame, text="正在初始化…", font=("Segoe UI", 14)).pack(pady=(140, 10))
+    try:
+        pb = ttk.Progressbar(loading_frame, mode="indeterminate")
+        pb.pack(fill="x", padx=120)
+        pb.start(10)
+    except Exception:
+        pb = None
+
+    try:
+        # 居中并确保不会跑到屏幕外
+        app.update_idletasks()
         try:
-            from tray_icon import SystemTrayIcon, check_tray_dependencies
-            
-            available, missing = check_tray_dependencies()
-            if available:
-                logger.info("初始化系统托盘...")
-                tray_icon = SystemTrayIcon(
-                    app_name=APP_NAME,
-                    on_show_window=hosts_optimizer.show_window,
-                    on_hide_window=hosts_optimizer.hide_window,
-                    on_quick_test=lambda: app.after(0, hosts_optimizer.start_test),
-                    on_flush_dns=lambda: app.after(0, lambda: hosts_optimizer.flush_dns(silent=True)),
-                    on_exit=hosts_optimizer.force_exit,
-                )
-                
-                if tray_icon.start():
-                    hosts_optimizer.set_tray_icon(tray_icon)
-                    logger.info("系统托盘初始化成功")
-                else:
-                    logger.warning("系统托盘启动失败")
-                    tray_icon = None
-            else:
-                logger.info(f"系统托盘不可用，缺少依赖: {', '.join(missing)}")
-                logger.info("如需使用托盘功能，请运行: pip install pystray Pillow")
-        except ImportError as e:
-            logger.warning(f"无法导入托盘模块: {e}")
+            app.place_window_center()
+        except Exception:
+            sw = app.winfo_screenwidth()
+            sh = app.winfo_screenheight()
+            w = max(1, app.winfo_width())
+            h = max(1, app.winfo_height())
+            x = max(0, int(sw / 2 - w / 2))
+            y = max(0, int(sh / 2 - h / 2))
+            app.geometry(f"{w}x{h}+{x}+{y}")
+        app.deiconify()
+    except Exception:
+        pass
+
+    try:
+        splash.destroy()
+    except Exception:
+        pass
+
+    state: dict = {"hosts_optimizer": None, "tray_icon": None}
+
+    def _finish_bootstrap() -> None:
+        """在主循环中初始化主界面与托盘，避免 splash 后黑屏等待。"""
+        try:
+            # 关键：不要在初始化主界面前销毁占位层，否则会出现“空白卡住”。
+            # 占位层保持显示，等 HostsOptimizer 初始化完成后再销毁。
+            try:
+                app.update_idletasks()
+            except Exception:
+                pass
+
+            hosts_optimizer = HostsOptimizer(app)
+            state["hosts_optimizer"] = hosts_optimizer
+
+            # 主界面初始化完成后再移除占位层
+            try:
+                if pb is not None:
+                    pb.stop()
+            except Exception:
+                pass
+            try:
+                loading_frame.destroy()
+            except Exception:
+                pass
+
+            # 初始化系统托盘（如果可用）
+            tray_icon = None
+            if TRAY_CONFIG.get("minimize_to_tray", True):
+                try:
+                    from tray_icon import SystemTrayIcon, check_tray_dependencies
+
+                    available, missing = check_tray_dependencies()
+                    if available:
+                        logger.info("初始化系统托盘...")
+                        tray_icon = SystemTrayIcon(
+                            app_name=APP_NAME,
+                            on_show_window=hosts_optimizer.show_window,
+                            on_hide_window=hosts_optimizer.hide_window,
+                            on_quick_test=lambda: app.after(0, hosts_optimizer.start_test),
+                            on_flush_dns=lambda: app.after(0, lambda: hosts_optimizer.flush_dns(silent=True)),
+                            on_exit=lambda: app.after(0, hosts_optimizer.force_exit),
+                        )
+
+                        if tray_icon.start():
+                            hosts_optimizer.set_tray_icon(tray_icon)
+                            logger.info("系统托盘初始化成功")
+                        else:
+                            logger.warning("系统托盘启动失败")
+                            tray_icon = None
+                    else:
+                        logger.info(f"系统托盘不可用，缺少依赖: {', '.join(missing)}")
+                        logger.info("如需使用托盘功能，请运行: pip install pystray Pillow")
+                except ImportError as e:
+                    logger.warning(f"无法导入托盘模块: {e}")
+                except Exception as e:
+                    logger.warning(f"初始化托盘时出错: {e}")
+            state["tray_icon"] = tray_icon
+
+            # 如果配置了启动时最小化（在 UI 初始化完成后再处理）
+            if TRAY_CONFIG.get("start_minimized", False) and tray_icon and tray_icon.is_running:
+                logger.info("启动时最小化到托盘")
+                app.after(100, hosts_optimizer.hide_window)
         except Exception as e:
-            logger.warning(f"初始化托盘时出错: {e}")
-    
-    # 如果配置了启动时最小化
-    if TRAY_CONFIG.get("start_minimized", False) and tray_icon and tray_icon.is_running:
-        logger.info("启动时最小化到托盘")
-        app.after(100, hosts_optimizer.hide_window)
-    
-    logger.info("GUI 界面初始化完成，进入主循环")
+            logger.exception(f"初始化主界面失败: {e}")
+
+    logger.info("GUI 主循环启动（延迟初始化主界面）")
+    app.after(10, _finish_bootstrap)
     app.mainloop()
     
     # 注意：托盘清理已在 force_exit() 中处理（窗口销毁时）

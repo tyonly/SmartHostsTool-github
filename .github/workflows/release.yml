@@ -35,7 +35,8 @@ jobs:
           Compress-Archive -Path "README.md", "LICENSE" -DestinationPath "dist\SmartHostsTool-${{ github.ref_name }}-win.zip" -Update
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
           body: |

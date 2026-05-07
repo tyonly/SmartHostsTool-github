@@ -13,6 +13,9 @@ import sys
 APP_NAME = "SmartHostsTool"
 APP_THEME = "cosmo"  # 现代简洁风格基于 cosmo 亮色主题
 
+# UI 特效开关（默认关闭以提升启动速度与稳定性）
+ENABLE_GLASS_BACKGROUND = False
+
 # ========================================
 # 现代简洁配色方案
 # ========================================
@@ -76,6 +79,13 @@ HOSTS_END_MARK = "# === SmartHostsTool End ==="
 # requests 超时： (connect_timeout, read_timeout)
 REMOTE_FETCH_TIMEOUT = (5, 15)
 
+# 远程源“连通性测试”超时（秒）
+# 用途：UI 中对每个 hosts 源做快速可用性探测（不等同于完整获取/解析）
+REMOTE_SOURCE_TEST_TIMEOUT_SECONDS = 10
+
+# 测速线程池并发上限（UI 层批量测速用）
+SPEED_TEST_MAX_WORKERS = 60
+
 # 远程 hosts 源（按优先级）
 REMOTE_HOSTS_URLS = [
     "https://github-hosts.tinsfox.com/hosts",
@@ -88,9 +98,8 @@ REMOTE_HOSTS_URLS = [
 ]
 
 # UI 上用于选择远程 hosts 源的显示项（保留原版文字）
-# 格式：(显示名称, URL或None)
+# 格式：(显示名称, URL)
 REMOTE_HOSTS_SOURCE_CHOICES = [
-    ("自动（按优先级）", None),
     ("tinsfox（github-hosts.tinsfox.com）", REMOTE_HOSTS_URLS[0]),
     ("GitHub520（raw.hellogithub.com）", REMOTE_HOSTS_URLS[1]),
     ("GitHub520（raw.githubusercontent.com）", REMOTE_HOSTS_URLS[2]),
@@ -102,6 +111,9 @@ REMOTE_HOSTS_SOURCE_CHOICES = [
 
 # 自定义远程源存储文件名
 CUSTOM_REMOTE_SOURCES_FILE = "custom_remote_sources.json"
+
+# 已选择的数据源存储文件名
+SELECTED_SOURCES_FILE = "selected_sources.json"
 
 SPEED_TEST_CONFIG = {
     "tcp": {

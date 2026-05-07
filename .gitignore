@@ -29,3 +29,5 @@ Thumbs.db
 # 排除个人配置文件
 *.local
 *.ini
+.kilo/kilo.json
+docs/AI修改质量守则-通用规则.md

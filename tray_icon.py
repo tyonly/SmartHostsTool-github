@@ -156,7 +156,11 @@ class SystemTrayIcon:
                 self.on_flush_dns()
         
         def exit_app(icon, item):
-            self.stop()
+            # 先停止托盘图标，避免退出后图标残留
+            try:
+                icon.stop()
+            except Exception as e:
+                self.logger.warning(f"托盘退出时停止图标失败: {e}")
             if self.on_exit:
                 self.on_exit()
         
@@ -229,7 +233,14 @@ class SystemTrayIcon:
                 self.logger.info("系统托盘已停止")
             except Exception as e:
                 self.logger.warning(f"停止托盘时出错: {e}")
+        
         self._running = False
+        self._icon = None
+    
+    def wait_for_thread(self, timeout=2.0):
+        """等待托盘线程结束（供外部调用，避免死锁）"""
+        if self._icon_thread and self._icon_thread.is_alive():
+            self._icon_thread.join(timeout=timeout)
     
     def set_window_visible(self, visible: bool):
         """更新窗口可见状态（用于同步状态）"""

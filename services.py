@@ -262,6 +262,76 @@ class RemoteHostsClient:
 
         raise RuntimeError(f"所有远程 hosts 源均获取失败：{last_err}" if last_err else "所有远程 hosts 源均获取失败")
 
+    def probe_hosts_url(self, url: str, *, timeout_seconds: float = 10.0) -> bool:
+        """快速探测某个 hosts 源是否可用（不抛异常，返回 bool）。
+
+        用途：UI 里的“测试连通性/测试全部”。
+        规则：
+        - HTTP 200 且内容不是明显的 HTML
+        - 内容可解析出至少 1 条 github 相关记录（更贴近真实可用性）
+        """
+        if not url:
+            return False
+        try:
+            connect_timeout = self.timeout[0] if isinstance(self.timeout, tuple) else 5
+            t = (min(float(connect_timeout), float(timeout_seconds)), float(timeout_seconds))
+            r = self.session.get(url, timeout=t)
+            if r.status_code != 200:
+                return False
+            txt = r.text or ""
+            ctype = (r.headers.get("content-type") or "").lower()
+            head = txt[:500].lower()
+            if "text/html" in ctype and ("<html" in head or "<!doctype" in head):
+                return False
+            parsed = self.parse_github_hosts_text(txt, ipv4_only=False, ipv6_only=False)
+            return bool(parsed)
+        except Exception:
+            return False
+
+    def fetch_multiple_urls(
+        self,
+        urls: List[str],
+        *,
+        ipv4_only: bool = False,
+        ipv6_only: bool = False,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ) -> Tuple[List[Tuple[str, str]], List[str]]:
+        """从多个 URL 同步获取 hosts 并去重（不使用 asyncio）。
+
+        Returns: (records, used_urls)
+        """
+        if not urls:
+            return [], []
+
+        all_records: Dict[Tuple[str, str], Tuple[str, str]] = {}
+        used_urls: List[str] = []
+
+        for idx, url in enumerate(urls):
+            if progress_callback:
+                try:
+                    progress_callback(idx + 1, url)
+                except Exception:
+                    pass
+            try:
+                r = self.session.get(url, timeout=self.timeout)
+                if r.status_code != 200:
+                    continue
+                txt = r.text or ""
+                ctype = (r.headers.get("content-type") or "").lower()
+                head = txt[:500].lower()
+                if "text/html" in ctype and ("<html" in head or "<!doctype" in head):
+                    continue
+                parsed = self.parse_github_hosts_text(txt, ipv4_only=ipv4_only, ipv6_only=ipv6_only)
+                if not parsed:
+                    continue
+                for ip, dom in parsed:
+                    all_records[(ip, dom)] = (ip, dom)
+                used_urls.append(url)
+            except Exception:
+                continue
+
+        return list(all_records.values()), used_urls
+
     async def fetch_github_hosts_async(
         self,
         *,
@@ -466,6 +536,51 @@ class RemoteHostsClient:
                     await asyncio.sleep(0.5 * (attempt + 1))
                     continue
                 raise RuntimeError(f"从 {url} 获取内容失败（重试 {max_retries} 次后）：{e}")
+
+    async def fetch_multiple_urls_async(
+        self,
+        urls: List[str],
+        ipv4_only: bool = False,
+        ipv6_only: bool = False,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ) -> Tuple[List[Tuple[str, str]], List[str]]:
+        """从多个URL获取hosts数据并去重。
+
+        Args:
+            urls: URL列表
+            ipv4_only: 仅返回IPv4
+            ipv6_only: 仅返回IPv6
+            progress_callback: 进度回调函数，参数为 (current_index, url)
+
+        Returns: (records, used_urls) - 去重后的记录和成功获取的URL列表
+        """
+        if not urls:
+            return [], []
+
+        all_records: Dict[Tuple[str, str], Tuple[str, str]] = {}
+        used_urls = []
+
+        for idx, url in enumerate(urls):
+            # 调用进度回调
+            if progress_callback:
+                try:
+                    progress_callback(idx + 1, url)
+                except Exception:
+                    pass
+            
+            try:
+                content = await self._fetch_url_content_async(url)
+                parsed = self.parse_github_hosts_text(content, ipv4_only=ipv4_only, ipv6_only=ipv6_only)
+                if parsed:
+                    for record in parsed:
+                        key = (record[0], record[1])
+                        all_records[key] = record
+                    used_urls.append(url)
+            except Exception:
+                # 静默忽略失败，让其他源继续
+                continue
+
+        return list(all_records.values()), used_urls
 
 
 # ---------------------------------------------------------------------
@@ -869,8 +984,9 @@ class SpeedTester:
                         await writer.wait_closed()
                     except Exception:
                         pass
-                finally:
-                    return True, None
+                except Exception:
+                    pass
+                return True, None
 
             return await asyncio.wait_for(_do(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -895,15 +1011,24 @@ class SpeedTester:
         """
         family = self._get_ip_family(ip)
         try:
+            t0 = time.perf_counter_ns()
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip, port, family=family),
-                timeout=timeout
+                timeout=timeout,
             )
-            # 连接成功，这里无法直接获取精确的 RTT
-            # 但我们可以近似测量
-            writer.close()
-            await writer.wait_closed()
-            return 0.0, None  # 实际 RTT 需要通过其他方式获取
+            t1 = time.perf_counter_ns()
+            try:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # 近似 RTT：以连接建立耗时作为 connect RTT
+            rtt_ms = (t1 - t0) / 1_000_000.0
+            return max(0.1, rtt_ms), None
         except asyncio.TimeoutError:
             return None, "timeout"
         except Exception as e:

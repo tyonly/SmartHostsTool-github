@@ -710,7 +710,7 @@ class AboutWindow:
                 text.pack(side=LEFT, fill=BOTH, expand=True)
 
                 # 滚动条
-                scrollbar = ttk.Scrollbar(text_frame, width=12)
+                scrollbar = ttk.Scrollbar(text_frame)
                 scrollbar.pack(side=RIGHT, fill=Y, padx=(8, 0))
                 scrollbar.configure(command=text.yview)
                 text.configure(yscrollcommand=scrollbar.set)
