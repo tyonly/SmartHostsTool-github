@@ -144,10 +144,14 @@ def get_git_version() -> str:
             cwd=os.path.dirname(os.path.abspath(__file__)) or ".",
         )
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            version = result.stdout.strip()
+            # 去掉可能的前缀v
+            if version.startswith('v') or version.startswith('V'):
+                version = version[1:]
+            return version
     except Exception:
         pass
-    return "V1.8"
+    return "1.8"
 
 
 

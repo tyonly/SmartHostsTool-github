@@ -1,0 +1,54 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 只在推送 v* 标签时触发
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller SmartHostsTool.spec --clean
+
+      - name: Create ZIP package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\SmartHostsTool.exe" -DestinationPath "dist\SmartHostsTool-${{ github.ref_name }}-win.zip"
+          Compress-Archive -Path "README.md", "LICENSE" -DestinationPath "dist\SmartHostsTool-${{ github.ref_name }}-win.zip" -Update
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*.zip
+          body: |
+            ## SmartHostsTool v1.9
+
+            ### 新功能
+            - 测速结果支持右键复制结果
+            - 管理远程源对话框默认加载预设远程源
+            - 优化按钮布局：更多按钮放在暂停测速后面
+
+            ### 使用说明
+            1. 解压 zip 文件
+            2. 运行 SmartHostsTool.exe
+            3. 首次运行需要管理员权限
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

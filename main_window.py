@@ -518,9 +518,9 @@ class HostsOptimizer(ttk.Frame):
         
         settings_window = ttk.Toplevel(self.master)
         settings_window.title("定时测速设置")
-        settings_window.geometry("680x820")
+        settings_window.geometry("680x700")
         settings_window.resizable(True, True)
-        settings_window.minsize(620, 750)
+        settings_window.minsize(620, 600)
         
         # 居中
         try:
@@ -529,8 +529,8 @@ class HostsOptimizer(ttk.Frame):
             sw = settings_window.winfo_screenwidth()
             sh = settings_window.winfo_screenheight()
             x = int(sw / 2 - 340)
-            y = int(sh / 2 - 410)
-            settings_window.geometry(f"680x820+{x}+{y}")
+            y = int(sh / 2 - 350)
+            settings_window.geometry(f"680x700+{x}+{y}")
         
         # 模态
         settings_window.transient(self.master)
@@ -1049,7 +1049,10 @@ class HostsOptimizer(ttk.Frame):
         )
         self.refresh_remote_btn.pack(side=LEFT, padx=5)
 
-        # 主操作
+        # 主操作（从右到左顺序：更多->暂停测速->开始测速）
+        self.more_btn = ttk.Menubutton(actions, text="🧰 更多 ▾", bootstyle="secondary", width=BUTTON_WIDTHS["more"])
+        self.more_btn.pack(side=RIGHT, padx=(0, 8))
+
         self.pause_test_btn = ttk.Button(
             actions,
             text="暂停测速",
@@ -1069,10 +1072,6 @@ class HostsOptimizer(ttk.Frame):
             state=DISABLED,
         )
         self.start_test_btn.pack(side=RIGHT, padx=5)
-
-        # 更多功能（放在暂停测速后面，从右到左顺序：暂停测速->开始测速->更多）
-        self.more_btn = ttk.Menubutton(actions, text="🧰 更多 ▾", bootstyle="secondary", width=BUTTON_WIDTHS["more"])
-        self.more_btn.pack(side=RIGHT, padx=(0, 8))
         more_menu = Menu(self.more_btn, tearoff=0)
         more_menu.add_command(label="🧹刷新 DNS", command=self.flush_dns)
         more_menu.add_command(label="📄查看 Hosts 文件", command=self.view_hosts_file)
