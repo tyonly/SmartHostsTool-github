@@ -109,6 +109,7 @@
 - ✅ **自动排序**：按延迟从低到高排序
 - ✅ **批量选择**：点击「选择」列复选框批量勾选
 - ✅ **实时更新**：测速过程中动态插入新结果
+- ✅ **右键复制**：测速结果支持右键菜单一键复制（复制选中行/全部结果）
 
 ---
 
@@ -491,21 +492,19 @@ python main.py
 
 ### 打包为可执行文件
 
-使用 PyInstaller 打包：
+使用 PyInstaller 打包（项目已内置 `.spec` 文件）：
 
 ```bash
 # 安装 PyInstaller
 pip install pyinstaller
 
 # 打包为单文件可执行程序
-pyinstaller --onefile --windowed --icon=icon.ico --add-data "presets.json;." --add-data "头像.jpg;." --name "SmartHostsTool" main.py
+pyinstaller SmartHostsTool.spec --clean
 ```
 
-**参数说明**：
-- `--onefile`：打包为单个 EXE 文件
-- `--windowed`：隐藏控制台窗口
-- `--icon`：设置程序图标
-- `--add-data`：打包额外资源文件
+**打包产物**：`dist/SmartHostsTool.exe`（单文件绿色版，直接运行无需 Python 环境）
+
+**spec 文件说明**：已配置自动打包 `icon.ico`、`头像.jpg`、`presets.json` 等资源文件，无需手动指定参数。
 
 ---
 
